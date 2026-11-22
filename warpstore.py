@@ -22,13 +22,15 @@ a desktop, and neither may be asked to install anything.
 import json
 import os
 import platform
+import py_compile
 import sys
+import tarfile
 import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 
 # Bumped when the on-disk shape of state.json changes. v1 keyed `installed` by
 # bare software name; v2 keys by `<scope>:<name>`.
@@ -704,3 +706,85 @@ def limit_to_names(games, names):
     """Keep only the games the user named, by bare name or `scope:name`."""
     wanted = {n.lower() for n in names}
     return [g for g in games if g["name"].lower() in wanted or game_key(g).lower() in wanted]
+
+
+# --------------------------------------------------------------------------
+# self-update
+# --------------------------------------------------------------------------
+
+# Set in the environment of the process an update hands over to, so the new
+# engine does not look for an update of itself again in the same run.
+SELF_UPDATED_ENV = "WARPSTORE_SELF_UPDATED"
+
+
+def _release_info(cfg):
+    path = (cfg["store"].get("api") or {}).get("release")
+    if not path or not cfg["behavior"].get("self_update", True):
+        return None
+    body, _ = http_get(cfg, base_url(cfg) + "/" + path.lstrip("/"))
+    info = json.loads(body.decode("utf-8"))
+    if not isinstance(info, dict) or not info.get("version") or not info.get("url"):
+        raise ValueError("the release answer has no version or url")
+    return info
+
+
+def _engine_files(archive, names):
+    """The members of `archive` named `names`, wherever they sit in it."""
+    found = {}
+    for member in archive.getmembers():
+        base = os.path.basename(member.name)
+        if member.isfile() and base in names and ".." not in member.name.split("/"):
+            found.setdefault(base, member)
+    missing = [name for name in names if name not in found]
+    if missing:
+        raise ValueError(f"the release has no {', '.join(missing)}")
+    return found
+
+
+def _install_release(cfg, info, engine_path):
+    home = os.path.dirname(os.path.abspath(engine_path))
+    names = [os.path.basename(engine_path), "warpstore.py"]
+    url = info["url"] if "://" in info["url"] else base_url(cfg) + "/" + info["url"].lstrip("/")
+    with tempfile.TemporaryDirectory(dir=home, prefix=".self-update-") as work:
+        archive_path = os.path.join(work, "release.tar.gz")
+        size = http_download(cfg, url, archive_path)
+        if info.get("size") and int(info["size"]) != size:
+            raise ValueError(f"downloaded {size} bytes, the release has {info['size']}")
+        staged = {}
+        with tarfile.open(archive_path, "r:gz") as archive:
+            for name, member in _engine_files(archive, names).items():
+                target = os.path.join(work, name)
+                with archive.extractfile(member) as src, open(target, "wb") as out:
+                    out.write(src.read())
+                py_compile.compile(target, cfile=os.path.join(work, name + "c"), doraise=True)
+                os.chmod(target, 0o755)
+                staged[name] = target
+        for name in reversed(names):
+            os.replace(staged[name], os.path.join(home, name))
+
+
+def self_update(cfg, engine_path, engine_version, argv):
+    """Bring the engine to the release the store's host names, then run it.
+
+    The host answers `store.api.release` with the version this store should run
+    and where its archive is. When that differs from `engine_version`, the archive
+    is downloaded, its engine file and `warpstore.py` are checked to compile and
+    moved over the installed ones (the engine file last), and the process starts
+    again on the new engine with the same arguments. Anything going wrong leaves
+    the installed engine as it is and says why; the sync goes on.
+    """
+    if os.environ.get(SELF_UPDATED_ENV):
+        return
+    try:
+        info = _release_info(cfg)
+        if info is None or str(info["version"]) == str(engine_version):
+            return
+        log(f"updating the store engine {engine_version} -> {info['version']}")
+        _install_release(cfg, info, engine_path)
+    except (OSError, ValueError, tarfile.TarError, py_compile.PyCompileError, urllib.error.URLError) as exc:
+        log(f"warning: the engine was not updated: {exc}")
+        return
+    log(f"engine {info['version']} installed, restarting")
+    os.environ[SELF_UPDATED_ENV] = "1"
+    os.execv(sys.executable, [sys.executable, os.path.abspath(engine_path)] + list(argv))
+

@@ -124,6 +124,21 @@ directory.
 mid-sync would otherwise leave a half-written playlist or gamelist, which is
 worse than an old one.
 
+## Self-update
+
+`self_update(cfg, engine_path, engine_version, argv)` is what an engine calls at
+the start of a sync. When the store config has `store.api.release` (the
+WarpEngine serves it as `/api/stores/<client>/release`), it asks the store's host
+which engine release to run; when that differs from `engine_version` it downloads
+the release archive, checks its size, checks that the engine file and
+`warpstore.py` in it compile, moves them over the installed ones (the engine file
+last) and starts the engine again with the same arguments. Anything going wrong
+leaves the installed engine as it is, says why, and the sync goes on.
+`behavior.self_update: false` turns it off.
+
+The engines release with this file inside: each one pins the tag of we-core it
+was tested with (its `CORE_VERSION`), and its release archive carries that copy.
+
 ## Taking every store off a machine
 
 ```sh
