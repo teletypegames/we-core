@@ -189,6 +189,6 @@ keyed by bare software name, is re-keyed on first run.
 - [`we-batocera`](https://git.teletypegames.org/stores/we-batocera) — EmulationStation ROM folders, `gamelist.xml`, Ports launchers
 - [`we-retroarch`](https://git.teletypegames.org/stores/we-retroarch) — RetroArch `.lpl` playlists and thumbnail folders
 
-Both pin nothing: they fetch `warpstore.py` from this repository's `master` at
-install time. A change here therefore reaches every store on its next install —
-which is the point, and also the reason to keep the surface above small.
+Both pin a tag of this repository (`CORE_VERSION`) and carry that copy in their
+release archive: a change here reaches the stores with the next engine release
+that pins it.
