@@ -2,7 +2,7 @@
 # Remove every WarpEngine store from this machine — the games, the store
 # engines, this shared core and the launchers.
 #
-#   curl -fsSL https://git.teletypegames.org/engines/warpstore/raw/branch/master/uninstall.sh | sh
+#   curl -fsSL https://git.teletypegames.org/engines/we-core/raw/branch/master/uninstall.sh | sh
 #
 # A single store is better removed by its own engine's uninstaller, which knows
 # that host's extras (a Batocera Ports entry, say). This one is for taking the

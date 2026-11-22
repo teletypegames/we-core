@@ -8,8 +8,8 @@ matching the machine we are running on, remembering what we put where — is her
 
 Two engines use it today:
 
-    stores/warp-engine-batocera-store    EmulationStation ROM folders + gamelist.xml
-    stores/warp-engine-retroarch-store   RetroArch .lpl playlists + thumbnails
+    stores/we-batocera    EmulationStation ROM folders + gamelist.xml
+    stores/we-retroarch   RetroArch .lpl playlists + thumbnails
 
 An adapter supplies three things: a `DEFAULT_CONFIG` describing its own host, an
 `accept()` callback deciding which catalog entries that host can run, and the

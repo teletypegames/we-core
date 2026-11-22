@@ -1,10 +1,11 @@
-# warpstore — the shared core of the WarpEngine store engines
+# we-core — the shared core of the WarpEngine store engines
 
 A **store engine** reads a [WarpEngine](https://git.teletypegames.org/engines/warp_engine)
 catalog and writes some host platform's own game library format. Only that last
 step differs between hosts. Everything before it — talking to the API, picking
 which release to install, matching the machine, remembering what was put where —
-is this module.
+is this module, `warpstore.py`. The file keeps that name: engines import it as
+`warpstore`, and installed boxes have it under that name.
 
 ```
                     ┌──────────────────────────────┐
@@ -14,7 +15,7 @@ is this module.
                     └──────────────┬───────────────┘
                     ┌──────────────┴───────────────┐
                     ▼                              ▼
-    warp-engine-batocera-store        warp-engine-retroarch-store
+          we-batocera                    we-retroarch
     ROM folders + gamelist.xml        .lpl playlists + thumbnails
                     │                              │
                     ▼                              ▼
@@ -126,7 +127,7 @@ worse than an old one.
 ## Taking every store off a machine
 
 ```sh
-curl -fsSL https://git.teletypegames.org/engines/warpstore/raw/branch/master/uninstall.sh | sh
+curl -fsSL https://git.teletypegames.org/engines/we-core/raw/branch/master/uninstall.sh | sh
 ```
 
 A single store is better removed by its own engine's `uninstall.sh`, which knows
@@ -170,8 +171,8 @@ keyed by bare software name, is re-keyed on first run.
 
 ## Users
 
-- [`warp-engine-batocera-store`](https://git.teletypegames.org/stores/warp-engine-batocera-store) — EmulationStation ROM folders, `gamelist.xml`, Ports launchers
-- [`warp-engine-retroarch-store`](https://git.teletypegames.org/stores/warp-engine-retroarch-store) — RetroArch `.lpl` playlists and thumbnail folders
+- [`we-batocera`](https://git.teletypegames.org/stores/we-batocera) — EmulationStation ROM folders, `gamelist.xml`, Ports launchers
+- [`we-retroarch`](https://git.teletypegames.org/stores/we-retroarch) — RetroArch `.lpl` playlists and thumbnail folders
 
 Both pin nothing: they fetch `warpstore.py` from this repository's `master` at
 install time. A change here therefore reaches every store on its next install —
