@@ -11,7 +11,10 @@
 # purge what it installed, and then deletes the store.
 #
 # Three engines exist today — Batocera, RetroArch and desktop — and the last two
-# share a store root, so a home is identified by which engine file is in it.
+# share a store root, so a home is identified by which engine file is in it. A
+# desktop store (the WarpEngine Desktop, we-desktop) has no engine file: its
+# home is `<id>-desktop` with a state.json, and its games are purged here from
+# that record, inside the same folders the client itself would delete in.
 #
 #   DRY_RUN=1   print what would go, remove nothing
 #   KEEP_GAMES=1  leave the installed games alone, remove only the scripts
@@ -63,6 +66,92 @@ purge_store() {  # purge_store <store home> <engine file> <home env var> <extra 
   }
 }
 
+# A desktop store's games live outside its home: the payload and the icon in
+# <install root>/<subfolder>, the launcher in the menu folder. state.json names
+# them; nothing outside those two folders is touched, as in the client.
+purge_desktop() {  # purge_desktop <store home>
+  home="$1"
+  if [ "$KEEP_GAMES" = "1" ]; then
+    say "keeping the games of '$(basename "$home")' (KEEP_GAMES=1)"
+    return 0
+  fi
+  if [ ! -f "$home/state.json" ]; then
+    say "no state.json in $home: nothing installed"
+    return 0
+  fi
+  DRY_RUN="$DRY_RUN" python3 - "$home" <<'PY' || {
+import json, os, shutil, sys
+
+home = sys.argv[1]
+dry = os.environ.get("DRY_RUN") == "1"
+
+
+def resolve(value, fallback):
+    for candidate in (value or fallback).split("|"):
+        if candidate.startswith("$"):
+            name, _, rest = candidate[1:].partition("/")
+            if os.environ.get(name):
+                return os.path.join(os.environ[name], rest)
+            continue
+        return os.path.expanduser(candidate)
+    return None
+
+
+def load(name):
+    try:
+        with open(os.path.join(home, name)) as handle:
+            return json.load(handle)
+    except (OSError, ValueError):
+        return {}
+
+
+paths = load("config.json").get("paths") or {}
+if sys.platform == "darwin":
+    install_root = resolve(paths.get("install_root"), "~/Library/Application Support")
+    menu_root = resolve(paths.get("menu_dir"), "~/Applications")
+else:
+    install_root = resolve(paths.get("install_root"), "$XDG_DATA_HOME|~/.local/share")
+    menu_root = resolve(paths.get("menu_dir"), "$XDG_DATA_HOME/applications|~/.local/share/applications")
+owned = os.path.join(install_root, paths.get("subfolder") or "warp")
+
+
+def within(target, root):
+    target, root = os.path.abspath(target), os.path.abspath(root)
+    return target != root and target.startswith(root + os.sep)
+
+
+def remove(target, root):
+    if not target or not os.path.lexists(target):
+        return
+    if not within(target, root):
+        print(f"[uninstall-all] warning: leaving {target} (outside {root})")
+        return
+    print(f"[uninstall-all] {'would remove' if dry else 'removing'} {target}")
+    if dry:
+        return
+    if os.path.isdir(target) and not os.path.islink(target):
+        shutil.rmtree(target, ignore_errors=True)
+    else:
+        os.remove(target)
+
+
+for record in (load("state.json").get("installed") or {}).values():
+    remove(record.get("payload"), owned)
+    remove(record.get("icon"), owned)
+    remove(record.get("menu"), menu_root)
+
+if not dry:
+    for folder in (os.path.join(owned, "icons"), owned):
+        try:
+            os.rmdir(folder)
+        except OSError:
+            pass
+PY
+    say "error: the games of $home could not be removed — stopping before anything else is removed."
+    exit 1
+  }
+}
+
 # --- Batocera stores -------------------------------------------------------
 if [ -d "$BATOCERA_STORE_ROOT" ]; then
   for home in "$BATOCERA_STORE_ROOT"/*/; do
@@ -106,13 +195,17 @@ if [ -d "$STORE_ROOT" ]; then
       purge_store "$home" retroarch_store.py RETROARCH_STORE_HOME "$extra"
       run rm -f "$BIN_DIR/$id-retroarch-store"
     fi
-    if [ -f "$home/desktop_store.py" ]; then
-      id="${name%-desktop}"
-      FOUND=$((FOUND + 1))
-      say "desktop store '$id' in $home"
-      purge_store "$home" desktop_store.py DESKTOP_STORE_HOME ""
-      run rm -f "$BIN_DIR/$id-desktop-store"
-    fi
+    case "$name" in
+      *-desktop)
+        if [ ! -f "$home/retroarch_store.py" ]; then
+          id="${name%-desktop}"
+          FOUND=$((FOUND + 1))
+          say "desktop store '$id' in $home"
+          purge_desktop "$home"
+          run rm -f "$BIN_DIR/$id-desktop-store"
+        fi
+        ;;
+    esac
     run rm -rf "$home"
   done
   [ "$DRY_RUN" = "1" ] || rmdir "$STORE_ROOT" 2>/dev/null || true

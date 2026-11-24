@@ -152,6 +152,13 @@ finds every store home under the known roots, has each store's **own engine**
 purge what it installed, and then deletes the store, its launcher and the engine
 files.
 
+A WarpEngine Desktop (we-desktop) store has no engine file in its home
+(`<id>-desktop`); the script purges its games from its `state.json` — the
+payload and the icon inside `<install root>/<subfolder>` (`paths` in its
+`config.json`, the OS's default otherwise), the launcher inside the menu
+folder — and leaves anything the record names outside those folders, as the
+client does.
+
 | Environment variable | Meaning |
 |---|---|
 | `DRY_RUN` | `1` to print what would go and remove nothing |
