@@ -1,0 +1,68 @@
+# we-core: warpstore.py is checked on every push; a vX.Y.Z tag publishes its API reference.
+# The store engines (stores/we-batocera, stores/we-retroarch) pin a tag in CORE_VERSION and carry
+# the core in their own release, so a tag here changes no installed box by itself.
+when:
+  - event: [push, manual]
+    branch: master
+  - event: tag
+    ref: refs/tags/v*
+
+steps:
+  # Compiles, and fails when the module, a public class or a public function has no docstring.
+  - name: check
+    image: python:3.12-slim
+    commands:
+      - python -m py_compile warpstore.py
+      - |
+        python - <<'PY'
+        import ast, sys
+        tree = ast.parse(open("warpstore.py").read())
+        items = [("module", tree)] + [(n.name, n) for n in ast.walk(tree)
+                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and not n.name.startswith("_")]
+        missing = [name for name, node in items if not ast.get_docstring(node)]
+        print(f"{len(items) - len(missing)}/{len(items)} documented")
+        for name in missing:
+            print("  no docstring:", name)
+        sys.exit(1 if missing else 0)
+        PY
+
+  - name: tag-matches-version
+    image: python:3.12-slim
+    commands:
+      - V="$(sed -n 's/^VERSION = "\(.*\)"/\1/p' warpstore.py)"
+      - test "$CI_COMMIT_TAG" = "v$$V" || { echo "the tag ($CI_COMMIT_TAG) is not the VERSION of warpstore.py (v$$V)"; exit 1; }
+    when:
+      - event: tag
+
+  # On a vX.Y.Z tag: the pdoc HTML as the Gitea generic package engines/we-core-pdoc/<version>,
+  # which the wiki-fetcher serves under /pdoc/we-core/ (services/wiki-pages, fetcher/README.md).
+  - name: publish-pdoc
+    image: python:3.12-slim
+    depends_on: [check, tag-matches-version]
+    environment:
+      GITEA_TOKEN:
+        from_secret: gitea_token
+    commands:
+      - pip install --no-cache-dir -q pdoc==15.0.4
+      - V="$(sed -n 's/^VERSION = "\(.*\)"/\1/p' warpstore.py)"
+      - pdoc -o doc --footer-text "we-core $$V" ./warpstore.py
+      - |
+        python - "$$V" <<'PY'
+        import json, subprocess, sys, datetime
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+        meta = {"gem": "we-core", "version": sys.argv[1], "commit": commit,
+                "date": datetime.datetime.now(datetime.timezone.utc).strftime("%F"), "coverage": 100.0}
+        open("doc/meta.json", "w").write(json.dumps(meta))
+        PY
+      - tar -czf pdoc.tar.gz -C doc .
+      - |
+        python - "$$V" <<'PY'
+        import os, sys, urllib.request
+        url = f"https://git.teletypegames.org/api/packages/engines/generic/we-core-pdoc/{sys.argv[1]}/pdoc.tar.gz"
+        req = urllib.request.Request(url, data=open("pdoc.tar.gz", "rb").read(), method="PUT", headers={
+            "Authorization": "token " + os.environ["GITEA_TOKEN"].strip(), "Content-Type": "application/octet-stream"})
+        with urllib.request.urlopen(req) as res:
+            print(res.status, url)
+        PY
+    when:
+      - event: tag

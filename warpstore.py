@@ -30,7 +30,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.7.0"
+VERSION = "1.7.1"
 
 # Bumped when the on-disk shape of state.json changes. v1 keyed `installed` by
 # bare software name; v2 keys by `<scope>:<name>`.
@@ -59,30 +59,36 @@ LOG_STREAM = sys.stdout
 
 
 def set_tag(tag):
+    """Set the log and temp-file prefix (`load_config` sets it to the store id)."""
     global TAG
     TAG = tag
 
 
 def set_verbose(flag):
+    """Turn the `debug()` lines on or off."""
     global VERBOSE
     VERBOSE = bool(flag)
 
 
 def set_log_stream(stream):
+    """Send the human-readable log to `stream` (stderr when stdout carries data)."""
     global LOG_STREAM
     LOG_STREAM = stream
 
 
 def log(msg):
+    """Print one log line, prefixed with the tag."""
     print(f"[{TAG}] {msg}", file=LOG_STREAM, flush=True)
 
 
 def debug(msg):
+    """Print one log line, only in verbose mode."""
     if VERBOSE:
         log(msg)
 
 
 def die(msg, code=1):
+    """Print an error line to stderr and exit with `code`."""
     print(f"[{TAG}] error: {msg}", file=sys.stderr, flush=True)
     sys.exit(code)
 
@@ -93,6 +99,7 @@ def die(msg, code=1):
 
 
 def load_json(path, default=None):
+    """Read a JSON file; `default` when it is missing or unreadable (the latter logged)."""
     try:
         with open(path, "r", encoding="utf-8") as fh:
             return json.load(fh)
@@ -104,6 +111,7 @@ def load_json(path, default=None):
 
 
 def write_json(path, data):
+    """Write `data` as indented UTF-8 JSON, atomically."""
     write_atomic(path, json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8"))
 
 
@@ -243,10 +251,12 @@ def init(config_path):
 
 
 def base_url(cfg):
+    """The catalog's base URL from the config."""
     return cfg["store"]["base_url"]
 
 
 def api_url(cfg, endpoint, params=None):
+    """The URL of an API endpoint named in the config, with `params` as the query string."""
     path = cfg["store"]["api"][endpoint]
     url = base_url(cfg) + "/" + path.lstrip("/")
     if params:
@@ -264,6 +274,7 @@ def download_url(cfg, asset):
 
 
 def user_agent(cfg):
+    """The User-Agent of the requests: the warpstore version and the store id."""
     return f"warpstore/{VERSION} ({cfg['store']['id']})"
 
 
@@ -353,6 +364,7 @@ def host_os():
 
 
 def host():
+    """The machine as the catalog matches it: `{"os": ..., "arch": ...}`."""
     return {"os": host_os(), "arch": machine()}
 
 
@@ -668,6 +680,7 @@ def game_key(record):
 
 
 def load_state():
+    """Read state.json, migrating a v1 state; an unknown version starts empty."""
     state = load_json(STATE_PATH, default=None) or {}
     version = state.get("version")
     if version == 1:
@@ -689,11 +702,13 @@ def migrate_state_v1(state):
 
 
 def save_state(state):
+    """Write state.json with the current state version."""
     state["version"] = STATE_VERSION
     write_json(STATE_PATH, state)
 
 
 def records_by_scope(installed):
+    """Group the installed records by their scope."""
     grouped = {}
     for record in installed.values():
         grouped.setdefault(record_scope(record), []).append(record)
