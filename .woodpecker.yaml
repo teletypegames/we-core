@@ -34,11 +34,11 @@ steps:
     when:
       - event: tag
 
-  # On a vX.Y.Z tag: the pdoc HTML as the Gitea generic package engines/we-core-pdoc/<version>,
+  # On a vX.Y.Z tag (or a manual run of master, for the current VERSION): the pdoc HTML as the Gitea generic package engines/we-core-pdoc/<version>,
   # which the wiki-fetcher serves under /pdoc/we-core/ (services/wiki-pages, fetcher/README.md).
   - name: publish-pdoc
     image: python:3.12-slim
-    depends_on: [check, tag-matches-version]
+    depends_on: [check]
     environment:
       GITEA_TOKEN:
         from_secret: gitea_token
@@ -48,8 +48,9 @@ steps:
       - pdoc -o doc --footer-text "we-core $$V" ./warpstore.py
       - |
         python - "$$V" <<'PY'
-        import json, subprocess, sys, datetime
-        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+        import json, sys, datetime
+        head = open(".git/HEAD").read().strip()
+        commit = head if not head.startswith("ref:") else open(".git/" + head[5:].strip()).read().strip()
         meta = {"gem": "we-core", "version": sys.argv[1], "commit": commit,
                 "date": datetime.datetime.now(datetime.timezone.utc).strftime("%F"), "coverage": 100.0}
         open("doc/meta.json", "w").write(json.dumps(meta))
@@ -66,3 +67,4 @@ steps:
         PY
     when:
       - event: tag
+      - event: manual
