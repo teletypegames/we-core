@@ -76,8 +76,9 @@ Each `unavailable` record carries `name`, `title`, `platform`, `desc`, `author`,
 | `vetoed` | the adapter's `accept` refused it |
 | `gated` | the host sells it; a store downloads anonymously, so it cannot have it |
 
-Titles the store *chooses* not to offer — the wrong status, an `only`/`exclude` list —
-are in none of the three lists: that is editorial, not a limitation of the machine. A
+Titles the store *chooses* not to offer — the wrong status, an `only`/`exclude` list, a
+software that keeps out of the stores (`stores` among the `disabledKinds` the catalog
+tells on it, WarpEngine 5.15.0) — are in none of the three lists: that is editorial, not a limitation of the machine. A
 platform switched off is reported, because to somebody looking at a catalog it reads as
 "not supported here". `select_games` is now a two-value wrapper around this, so an
 adapter that only installs needs no change.

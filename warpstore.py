@@ -30,7 +30,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 
 # Bumped when the on-disk shape of state.json changes. v1 keyed `installed` by
 # bare software name; v2 keys by `<scope>:<name>`.
@@ -480,6 +480,10 @@ def pick_release(entry, kinds, ext):
 # Why a title the store offers cannot be installed here. A client shows these rather
 # than hiding the title: "there is nothing for your machine" is an answer, and an
 # absent entry is not.
+# A title whose software lists this among its `disabledKinds` (WECP api 5) keeps out of
+# the store engines: it needs something no emulator gives it, so a store does not offer it.
+STORES_DISABLED = "stores"
+
 UNAVAILABLE_PLATFORM = "platform_off"   # this store does not carry that platform
 UNAVAILABLE_HOST = "host_asset"         # the platform has no asset kind for this os/arch
 UNAVAILABLE_ASSET = "no_asset"          # no release carries the asset it would need
@@ -514,7 +518,8 @@ def survey_catalog(cfg, catalog, accept, host_info=None):
     lying about its catalog by omission, so a client can show them greyed out instead.
 
     Titles the store *chooses* not to offer — the wrong status, an `only`/`exclude`
-    list, a platform switched off — are not in any of the three: that is editorial, not
+    list, a software that keeps out of the stores (`stores` among its `disabledKinds`),
+    a platform switched off — are not in any of the three: that is editorial, not
     a limitation of the machine. The one exception is a platform switched off, which is
     reported, because to a person looking at a catalog it reads as "not supported here".
     """
@@ -552,6 +557,8 @@ def survey_catalog(cfg, catalog, accept, host_info=None):
         if only and name.lower() not in only:
             continue
         if name.lower() in exclude:
+            continue
+        if STORES_DISABLED in (sw.get("disabledKinds") or []):
             continue
 
         spec = (cfg["platforms"] or {}).get(sw.get("platform"))
