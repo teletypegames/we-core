@@ -30,7 +30,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.7.1"
+VERSION = "2.0.0"
 
 # Bumped when the on-disk shape of state.json changes. v1 keyed `installed` by
 # bare software name; v2 keys by `<scope>:<name>`.
@@ -179,6 +179,54 @@ def prune_empty_dirs(dirs, root=None, dry_run=False):
 
 
 # --------------------------------------------------------------------------
+# asset kinds
+# --------------------------------------------------------------------------
+
+# The asset kind of data an emulator boots — a .prg, a .d64, a .tic. WECP api 6
+# (WarpEngine 6.0) calls it `package`; an engine before it says `cartridge`, and
+# a store config written before it says so too.
+PACKAGE_KIND = "package"
+KIND_ALIASES = {"cartridge": PACKAGE_KIND}
+
+
+def canonical_kind(kind):
+    """An asset kind by its WECP api 6 name: `cartridge` (api < 6) reads as `package`.
+
+    Every kind this module compares — the catalog's and the config's — goes
+    through here, so a store reads an old engine and a new one alike.
+    """
+    return KIND_ALIASES.get(kind, kind) if isinstance(kind, str) else kind
+
+
+def _canonical_kind_value(value):
+    """A config `kind` value (a string, a list, or a per-host map of either), renamed."""
+    if isinstance(value, str):
+        return canonical_kind(value)
+    if isinstance(value, list):
+        return [_canonical_kind_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _canonical_kind_value(item) for key, item in value.items()}
+    return value
+
+
+def migrate_config_kinds(config):
+    """Rename the old kinds in a store config's `platforms`, in place.
+
+    A box updates its engine by itself but keeps its own `config.json`, so a
+    config written before WECP api 6 still says `"kind": "cartridge"`. Returns
+    True when something was renamed.
+    """
+    changed = False
+    for spec in ((config or {}).get("platforms") or {}).values():
+        if isinstance(spec, dict) and "kind" in spec:
+            renamed = _canonical_kind_value(spec["kind"])
+            if renamed != spec["kind"]:
+                spec["kind"] = renamed
+                changed = True
+    return changed
+
+
+# --------------------------------------------------------------------------
 # config
 # --------------------------------------------------------------------------
 
@@ -200,11 +248,18 @@ def load_config(path, defaults, overrides=None, required=()):
     `overrides` maps `"section.leaf"` to a CLI value (None means "not given"),
     and `required` names `"section.leaf"` paths that must end up non-empty.
     Also sets the log tag from `store.id` — from here on every message names
-    the store it came from.
+    the store it came from. A config that still names the `cartridge` kind is
+    rewritten to `package` once (`migrate_config_kinds`) and saved back.
     """
     user = load_json(path, default=None)
     if user is None:
         log(f"warning: no config at {path} — falling back to the built-in defaults")
+    elif isinstance(user, dict) and migrate_config_kinds(user):
+        try:
+            write_json(path, user)
+            debug(f"config: renamed the 'cartridge' kind to '{PACKAGE_KIND}' in {path}")
+        except OSError as exc:
+            debug(f"config: cannot save the renamed kinds to {path}: {exc}")
     cfg = deep_merge(json.loads(json.dumps(defaults)), user or {})
 
     for key, value in (overrides or {}).items():
@@ -371,7 +426,7 @@ def host():
 def resolve_for_host(value, host_info=None):
     """Resolve a config value that may depend on the machine we run on.
 
-    A plain string is the same everywhere — that is how a `cartridge` is
+    A plain string is the same everywhere — that is how a `package` is
     described, being data for an emulator. Where it differs, the value is a map
     and the most specific key wins:
 
@@ -456,11 +511,13 @@ def pick_release(entry, kinds, ext):
     wants — on Apple Silicon `mac_universal` beats `mac_x64`, which would need
     Rosetta, but not at the price of installing an older release.
 
-    Returns (release, asset_name, kind, asset_path).
+    Kinds are compared by `canonical_kind`, so `cartridge` and `package` are one.
+
+    Returns (release, asset_name, kind, asset_path), the kind by its api 6 name.
     """
     if isinstance(kinds, str) or kinds is None:
         kinds = [kinds]
-    kinds = [k for k in kinds if k]
+    kinds = [canonical_kind(k) for k in kinds if k]
 
     candidates = []
     latest = entry.get("latestRelease")
@@ -479,7 +536,7 @@ def pick_release(entry, kinds, ext):
         assets = release.get("assets") or []
         for kind in kinds:
             for asset in assets:
-                if asset.get("kind") != kind:
+                if canonical_kind(asset.get("kind")) != kind:
                     continue
                 path = asset.get("path", "")
                 name = asset_basename(path)

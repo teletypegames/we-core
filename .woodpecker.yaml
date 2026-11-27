@@ -1,4 +1,4 @@
-# we-core: warpstore.py is checked on every push; a vX.Y.Z tag publishes its API reference.
+# we-core: warpstore.py is checked and tested on every push; a vX.Y.Z tag publishes its API reference.
 # The store engines (stores/we-batocera, stores/we-retroarch) pin a tag in CORE_VERSION and carry
 # the core in their own release, so a tag here changes no installed box by itself.
 when:
@@ -25,6 +25,7 @@ steps:
             print("  no docstring:", name)
         sys.exit(1 if missing else 0)
         PY
+      - python -m unittest -v
 
   - name: tag-matches-version
     image: python:3.12-slim

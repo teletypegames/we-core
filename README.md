@@ -96,17 +96,25 @@ again, so a host that ignores a parameter changes nothing.
 |---|---|
 | Logging | `set_tag`, `set_verbose`, `log`, `debug`, `die` |
 | Files | `load_json`, `write_json`, `write_atomic`, `within`, `prune_empty_dirs` |
-| Config | `deep_merge`, `load_config` |
+| Config | `deep_merge`, `load_config`, `migrate_config_kinds` |
+| Asset kinds | `canonical_kind`, `PACKAGE_KIND` |
 | Store home | `init`, then `HOME`, `CONFIG_PATH`, `STATE_PATH`, `CATALOG_CACHE` |
 | HTTP | `http_get`, `http_download`, `api_url`, `download_url`, `user_agent` |
 | Host | `machine`, `host_os`, `host`, `resolve_for_host` |
 | Catalog | `fetch_catalog`, `select_games`, `survey_catalog`, `pick_release`, `asset_basename`, `download_image` |
 | State | `load_state`, `save_state`, `game_key`, `record_scope`, `records_by_scope`, `match_keys`, `limit_to_names` |
 
-Four of them carry decisions worth knowing about.
+Five of them carry decisions worth knowing about.
+
+**`canonical_kind(kind)`** — the asset kind of data an emulator boots is `package`
+from WECP api 6 (WarpEngine 6.0) on; an older engine calls it `cartridge`. Every
+kind the module compares, the catalog's and the config's, goes through this, so a
+store reads both engines alike. `load_config` renames the old kind in a box's own
+`config.json` once (`migrate_config_kinds`) and saves the file back, because a box
+updates its engine by itself but keeps its config.
 
 **`resolve_for_host(value, host)`** — a config value that may depend on the
-machine. A plain string is the same everywhere (that is what a `cartridge` is:
+machine. A plain string is the same everywhere (that is what a `package` is:
 data for an emulator). Where it differs, the value is a map and the most specific
 key wins: `{"linux-aarch64": …, "aarch64": …, "linux": …, "*": …}`. With no
 matching key and no `*` the answer is `None`, and the caller reports the title as
